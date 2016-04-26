@@ -17,14 +17,17 @@ feeds = {"torrent_files": {"rules_tree": (operator.and_, (operator.eq, F("applic
                                                        (operator.eq, F("logger"), "torrent_downloader"))},
          "views": {"rules_tree": (operator.and_, (operator.eq, F("application"), "theMediaShell"),
                                                  (operator.and_, (operator.eq, F("logger"), "movie"),
-                                                                 (operator.eq, F("msg"), "end")))}}
+                                                                 (operator.eq, F("msg"), "end")))},
+         "hides": {"rules_tree": (operator.and_, (operator.eq, F("application"), "themylog-panel"),
+                                                 (operator.and_, (operator.eq, F("logger"), "movie"),
+                                                                 (operator.eq, F("msg"), "hide")))}}
 for subtitle_provider in subtitle_providers:
     logger = "%s_subtitle_provider" % subtitle_provider
     feeds[logger] = {"rules_tree": (operator.and_, (operator.eq, F("application"), "tv_shows"),
                                                    (operator.eq, F("logger"), logger))}
 
 
-def analyze(torrent_files, video_files, views, **kwargs):
+def analyze(torrent_files, video_files, views, hides, **kwargs):
     shows = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {"subtitles": set()}))))
 
     for torrent_file in torrent_files:
@@ -35,14 +38,20 @@ def analyze(torrent_files, video_files, views, **kwargs):
     for video_file in video_files:
         args = video_file.args
         show = shows[args["show"]][args["season"]][args["episode"]][args["quality"]]
+        if show.get("state") in ["watched", "hidden"]:
+            continue
         show["state"] = "downloaded"
+        show["file"] = os.path.relpath(args["path"], "/media/storage/Torrent/downloads")
 
-        path = os.path.relpath(args["path"], "/media/storage/Torrent/downloads")
         for watched in views:
-            if os.path.relpath(watched.args["movie"], "/home/themylogin/Storage/Torrent/downloads") == path:
+            if os.path.relpath(watched.args["movie"], "/home/themylogin/Storage/Torrent/downloads") == show["file"]:
                 show["state"] = "watched"
                 show["duration"] = watched.args["duration"]
                 show["progress"] = watched.args["progress"]
+                break
+        for hidden in hides:
+            if hidden.args["movie"] == show["file"]:
+                show["state"] = "hidden"
                 break
 
     for subtitle_provider in subtitle_providers:
